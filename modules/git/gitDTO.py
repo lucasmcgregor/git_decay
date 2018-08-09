@@ -32,7 +32,7 @@ class GitRepoObj:
 			self.last_modified_date = git_file.date_added
 
 
-	def remove_file(self, path, date):
+	def remove_file(self, path, date, author):
 
 		#print "FILE BEING REMOVED: {0}: {1}".format(path, date)
 		#print "    length prior: {0}".format(len(self.files))
@@ -40,6 +40,7 @@ class GitRepoObj:
 		if (path in self.files):
 			gfile = self.files.get(path)
 			gfile.date_removed = date
+			gfile.remove_all_lines(date, author)
 
 			self.removed_files[path] = gfile
 			del self.files[path]
@@ -67,12 +68,15 @@ class GitRepoObj:
 
 class GitFileLineObj:
 
-		def __init__(self, date_added):
-			self.date_added = date_added;
-			self.date_removed = None;
+		def __init__(self, date_added, author):
+			self.date_added = date_added
+			self.date_removed = None
+			self.author = author
+			self.remover = None
 
-		def remove_line(self, date_removed):
+		def remove_line(self, date_removed, author):
 			self.date_removed = date_removed
+			self.remover = author
 
 
 class GitFileObj:
@@ -83,32 +87,36 @@ class GitFileObj:
 		self.date_removed = None
 		self.directory = directory
 		self.lines = []
-		self.deletedLines = []
+		self.deleted_lines = []
 
 	def get_path(self):
 		return self.path;
 
-	def add_line(self, line_number, date_added):
-		line = GitFileLineObj(date_added)
+	def add_line(self, line_number, date_added, author):
+		line = GitFileLineObj(date_added, author)
 		self.lines.insert(line_number, line)
 
-	def remove_line(self, line_number, date_removed):
+	def remove_line(self, line_number, date_removed, author):
 		if (len(self.lines) > line_number):
 			line = self.lines[line_number]
 			del self.lines[line_number]
 
 		else:
-			line = GitFileLineObj(date_removed)
+			line = GitFileLineObj(date_removed, author)
 
 		if (line is not None):
-			line.remove_line(date_removed)
-			self.deletedLines.append(line)
+			line.remove_line(date_removed, author)
+			self.deleted_lines.append(line)
+
+	def remove_all_lines(self, date_removed, author):
+		for i in range(len(self.lines)):
+			self.remove_line(i, date_removed, author)
 
 	def get_lines(self):
 		return self.lines
 
 	def get_removed_lines(self):
-		return self.deletedLines
+		return self.deleted_lines
 
 
 	def check_and_extend_line_array(self, length):
