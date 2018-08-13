@@ -68,7 +68,7 @@ class UserRateAnalyzer(GitRepoAnalyzer):
 		data_file = open(self.output_dir + "/user_change_rates.cvs", "wb")
 
 		#print("date, author, lines_added, lines_removed")
-		data_file.write("date, author, lines_added, lines_removed")
+		data_file.write("date, author, lines_added, lines_removed\n")
 		for day, data in time_slice_date.time_slices.iteritems():
 			for author, author_data in data.iteritems():
 				data_line = '{},{},{},{}\n'.format(day, author, author_data.lines_added, author_data.lines_removed)
