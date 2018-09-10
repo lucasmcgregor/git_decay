@@ -50,13 +50,13 @@ print "REPO START DATE: {0}".format(gro.start_date)
 print "REPO LAST MODIFED DATE: {0}".format(gro.last_modified_date)
 print "REPO DURATION: {0}".format(duration)
 
-#user_rate_analyzer = UserRateAnalyzer(gro, OUTPUT_DIR)
-#user_rate_analyzer.analyze()
+user_rate_analyzer = UserRateAnalyzer(gro, OUTPUT_DIR)
+user_rate_analyzer.analyze()
 
-#file_create_remove_analyzer = FileCreateRemoveAnalyzer(gro, OUTPUT_DIR)
-#file_create_remove_analyzer.analyze()
+file_create_remove_analyzer = FileCreateRemoveAnalyzer(gro, OUTPUT_DIR)
+file_create_remove_analyzer.analyze()
 
-line_decay_rate_alalyzer = LineDecayRateAnalyzer(gro)
+line_decay_rate_alalyzer = LineDecayRateAnalyzer(gro, OUTPUT_DIR)
 line_decay_rate_alalyzer.analyze()
 
 

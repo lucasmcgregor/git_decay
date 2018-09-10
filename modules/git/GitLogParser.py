@@ -103,7 +103,15 @@ class GitLogParser(object):
 						commit_patch_event.date = datetime.datetime.strptime(dateString, '%b %d %Y %H:%M:%S')
 
 					if (line.startswith('Author: ')):
-						commit_patch_event.author = line[8:].strip()
+						author = line[8:].strip().lower()
+
+						#try:
+						#author_email = re.search('^[\w\s\-\_\.]*\s<([\w\-\_\.]*[\@][\w\-\_\.])>$', lines_removed).group(1)
+						author_email = re.search('([\w+@]*)$', author).group(1)
+						commit_patch_event.author = author_email
+						#except:
+						#	commit_patch_event.author = author
+						#	print "Error in parsing author_email: ", sys.exc_info()[0]
 
 
 					## DIFF WILL START A NEW PATCH EVENT

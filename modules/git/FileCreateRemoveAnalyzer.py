@@ -69,7 +69,7 @@ class FileCreateRemoveAnalyzer(GitRepoAnalyzer):
 
 		if not os.path.exists(self.output_dir):
 			os.mkdir(self.output_dir)
-		data_file = open(self.output_dir + "/file_create_remove.cvs", "wb")
+		data_file = open(self.output_dir + "/file_create_remove.csv", "wb")
 
 
 		data_file.write("date, files_created_today, files_removed_today, files_in_existence, files_in_removed, avg_lifetime, avg_removetime, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10\n")
