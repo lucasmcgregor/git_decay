@@ -12,8 +12,9 @@ from git.gitDTO import *
 
 class GitLogParser(object):
 
-	def __init__(self, path):
+	def __init__(self, path, user_mapping):
 		self.path=path
+		self.user_mapping = user_mapping
 		self.git_repo_object = GitRepoObj()
 
 	def process_event(self, e, git_repo_object):
@@ -23,8 +24,12 @@ class GitLogParser(object):
 
 		#print "Author: {0} added:{1} and removed:{2} lines".format(e.author, e.lines_added, e.lines_removed)
 
+		author = e.author
+		if self.user_mapping is not None and e.author in self.user_mapping:
+			author = self.user_mapping[e.author]
+
 		if (e.is_delete):
-			git_repo_object.remove_file(e.old_path, e.date, e.author)
+			git_repo_object.remove_file(e.old_path, e.date, author)
 
 		elif (e.is_rename):
 			git_repo_object.rename_file(e.old_path, e.new_path, e.date)
@@ -51,12 +56,12 @@ class GitLogParser(object):
 					#print("    adding line: {0}").format((line_index + e.patch_start_index))
 					## On add, increment the index
 					line_index = line_index + 1
-					git_file.add_line((line_index + e.patch_start_index), e.date, e.author)
+					git_file.add_line((line_index + e.patch_start_index), e.date, author)
 				elif (line == -1):
 					#print("    removing line: {0}").format((line_index + e.patch_start_index))
 					# this is a removal, so do not increment the index
 					# a subsequent remove will use the same index to pull the NEXT line
-					git_file.remove_line((line_index + e.patch_start_index), e.date, e.author)
+					git_file.remove_line((line_index + e.patch_start_index), e.date, author)
 				else:
 					# no-op line, so just increment the index
 					line_index = line_index + 1
@@ -105,13 +110,14 @@ class GitLogParser(object):
 					if (line.startswith('Author: ')):
 						author = line[8:].strip().lower()
 
-						#try:
-						#author_email = re.search('^[\w\s\-\_\.]*\s<([\w\-\_\.]*[\@][\w\-\_\.])>$', lines_removed).group(1)
-						author_email = re.search('([\w+@]*)$', author).group(1)
+						match = re.search(r'<([\w\.\-\_]+@[\w\.\-\_]+)>$', author)
+						if match:
+							author_email = match.group(1)
+						else:
+							author_email = author
+
 						commit_patch_event.author = author_email
-						#except:
-						#	commit_patch_event.author = author
-						#	print "Error in parsing author_email: ", sys.exc_info()[0]
+
 
 
 					## DIFF WILL START A NEW PATCH EVENT
@@ -154,8 +160,8 @@ class GitLogParser(object):
 							lines_removed = index_parts[1]
 							lines_added = index_parts[2]
 
-							start_lines_removed = re.search('\-([0-9]*)[,]*[0-9]*', lines_removed).group(1)
-							start_lines_added = re.search('\+([0-9]*)[,]*[0-9]*', lines_added).group(1)
+							start_lines_removed = re.search(r'\-([0-9]*)[,]*[0-9]*', lines_removed).group(1)
+							start_lines_added = re.search(r'\+([0-9]*)[,]*[0-9]*', lines_added).group(1)
 							
 							psi = start_lines_added if (start_lines_added < start_lines_removed) else start_lines_removed;
 							patch_event.patch_start_index = int(psi)
