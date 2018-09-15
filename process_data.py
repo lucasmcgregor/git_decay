@@ -20,11 +20,17 @@ def clean_string_for_int(string):
 	return int(s)
 
 def clean_string_for_date(string):
-	
+    if string is None:
+        return None
 
+    if string == "None":
+        return None
 
+    # sample string = 2018-09-14 00:00:00
+    # 'Jun 1 2005  1:33PM' == '%b %d %Y %I:%M%p'
+    date = datetime.strptime(string, '%Y-%m-%d %H:%M:%S')
 
-
+    datetime_object = datetime.strptime('Jun 1 2005  1:33PM', '%b %d %Y %I:%M%p')
 
 spark = SparkSession \
     .builder \
