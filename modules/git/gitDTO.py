@@ -34,13 +34,10 @@ class GitRepoObj:
 
 	def remove_file(self, path, date, author):
 
-		#print "FILE BEING REMOVED: {0}: {1}".format(path, date)
-		#print "    length prior: {0}".format(len(self.files))
-
 		if (path in self.files):
 			gfile = self.files.get(path)
 			gfile.date_removed = date
-			gfile.remove_all_lines(date, author)
+			lines_removed = gfile.remove_all_lines(date, author)
 
 			self.removed_files[path] = gfile
 			del self.files[path]
@@ -74,6 +71,7 @@ class GitFileLineObj:
 			self.author = author
 			self.remover = None
 
+
 		def remove_line(self, date_removed, author):
 			self.date_removed = date_removed
 			self.remover = author
@@ -105,12 +103,16 @@ class GitFileObj:
 			line = GitFileLineObj(date_removed, author)
 
 		if (line is not None):
+
 			line.remove_line(date_removed, author)
 			self.deleted_lines.append(line)
 
 	def remove_all_lines(self, date_removed, author):
+		rv = len(self.lines)
 		for i in range(len(self.lines)):
-			self.remove_line(i, date_removed, author)
+			self.remove_line(0, date_removed, author)
+
+		return rv
 
 	def get_lines(self):
 		return self.lines

@@ -19,10 +19,9 @@ class GitLogParser(object):
 
 	def process_event(self, e, git_repo_object):
 
-		#print "Just received event: date={0}, old_path={1}, new_path={2}, start_index={3}, patch_lines={4}".format(
-		#	e.date, e.old_path, e.new_path, e.patch_start_index, e.patched_lines)
+		#print "Just received event: date={0}, old_path={1}, new_path={2}, start_index={3}, patch_lines={4}, delete={5}".\
+		#	format(e.date, e.old_path, e.new_path, e.patch_start_index, e.patched_lines, e.is_delete)
 
-		#print "Author: {0} added:{1} and removed:{2} lines".format(e.author, e.lines_added, e.lines_removed)
 
 		author = e.author
 		if self.user_mapping is not None and e.author in self.user_mapping:
@@ -98,6 +97,7 @@ class GitLogParser(object):
 					if (line.startswith('commit ')):
 
 						if (patch_event is not None and patch_event.is_populated):
+
 							self.process_event(patch_event, self.git_repo_object)
 
 						commit_patch_event = PatchEventObj()	
@@ -128,6 +128,8 @@ class GitLogParser(object):
 
 						if (patch_event is not None and patch_event.is_populated):
 							self.process_event(patch_event, self.git_repo_object)
+
+
 
 
 						## START A NEW PATCH EVENT BASED ON THE COMMIT EVENT
@@ -197,6 +199,10 @@ class GitLogParser(object):
 						patch_event.new_path = new_path
 						#print "New Filename {0}".format(new_path)
 
+					## READ THE FILE NAME, IF DEV/NULL -- THIS IS A DELETE
+					if (line.startswith('+++ /dev/null')):
+						patch_event.is_delete = True
+						in_delete_mode = True
 
 					if (in_patch_mode):
 						if line.startswith('+'):
