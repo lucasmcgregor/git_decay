@@ -6,6 +6,7 @@ from pyspark.sql import SQLContext
 from pyspark.sql import DataFrameReader
 import pyspark.sql.functions as Functions
 from pyspark.sql.functions import col as col_, max as max_, min as min_, trunc as trunc_, datediff as datediff_
+from pyspark.sql.functions import current_date as current_date_
 from pyspark.sql.types import StructField, StructType, StringType, DateType, IntegerType
 
 
@@ -72,6 +73,14 @@ line_decay_df = line_decay_df.withColumn("removed", clean_string_for_date_udf(co
 #line_decay_df.show()
 #print line_decay_df.schema
 
+#all_lines_by_creator = line_decay_df.groupBy(col_("creator"), \
+#                                             trunc_(col_("created"), 'mon').alias("cohort"))\
+#    .count()\
+#    .withColumnRenamed("count", "lines_created")
+
+
+total_active_lines = line_decay_df.filter(col_("removed").isNull()).count()
+
 all_lines_by_creator = line_decay_df.groupBy(col_("creator"))\
     .count()\
     .withColumnRenamed("count", "lines_created")
@@ -89,17 +98,29 @@ removed_lines_by_creator = line_decay_df.filter(col_("removed").isNotNull())\
     .count()\
     .withColumnRenamed("count", "lines_removed")
 
-removed_lines_by_creator_a = line_decay_df.filter(col_("remover") != "None")\
+active_lines_by_creator = line_decay_df.filter(col_("removed").isNull())\
     .groupBy(col_("creator"))\
     .count()\
-    .withColumnRenamed("count", "lines_removed_by_user")
+    .withColumnRenamed("count", "lines_active")
+
+self_removed_lines_by_creator = line_decay_df.filter(col_("removed").isNotNull())\
+    .filter(col_("remover") == col_("creator"))\
+    .groupBy(col_("creator"))\
+    .count()\
+    .withColumnRenamed("count", "lines_removed_by_author")
+
 
 decay_by_creator = all_lines_by_creator.join(removed_lines_by_creator, "creator", "left_outer")\
-    .join(removed_lines_by_creator_a, "creator", "left_outer")\
     .join(author_start, "creator", "left_outer")\
-    .join(author_last, "creator", "left_outer")\
-    .withColumn("creator_lifespan", datediff_(col_("author_first"), col_("author_last")))\
+    .join(author_last, "creator", "left_outer") \
+    .join(self_removed_lines_by_creator, "creator", "left_outer") \
+    .join(active_lines_by_creator, "creator", "left_outer") \
+    .withColumn("account_age", datediff_(current_date_(), col_("author_first")))\
+    .withColumn("account_lifespan", datediff_(col_("author_last"), col_("author_first")))\
+    .withColumn("account_dormant_for", datediff_(current_date_(), col_("author_last")))\
     .withColumn("pct_removed", (col_("lines_removed") / col_("lines_created")))\
+    .withColumn("pct_removed_by_self", (col_("lines_removed_by_author") / col_("lines_created")))\
+    .withColumn("pct_of_active_code_base", (col_("lines_active") / total_active_lines))\
     .orderBy(col_("pct_removed"))
 
 decay_by_creator.coalesce(1).write\
