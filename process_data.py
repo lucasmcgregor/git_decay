@@ -6,7 +6,7 @@ from pyspark.sql import SQLContext
 from pyspark.sql import DataFrameReader
 import pyspark.sql.functions as Functions
 from pyspark.sql.functions import col as col_, max as max_, min as min_, trunc as trunc_, datediff as datediff_
-from pyspark.sql.functions import current_date as current_date_
+from pyspark.sql.functions import current_date as current_date_, avg as avg_
 from pyspark.sql.types import StructField, StructType, StringType, DateType, IntegerType
 
 
@@ -85,13 +85,14 @@ all_lines_by_creator = line_decay_df.groupBy(col_("creator"))\
     .count()\
     .withColumnRenamed("count", "lines_created")
 
-author_start = line_decay_df.groupBy(col_("creator"))\
-    .agg(min_(col_("created")))\
-    .withColumnRenamed("min(created)", "author_first")
+author_agg = line_decay_df.groupBy(col_("creator"))\
+    .agg(min_(col_("created")).alias("author_first"), \
+         max_(col_("created")).alias("author_last"),
+         avg_(col_("lifespan")).alias("avg_lifespan"))
 
-author_last = line_decay_df.groupBy(col_("creator"))\
-    .agg(max_(col_("created")))\
-    .withColumnRenamed("max(created)", "author_last")
+#author_last = line_decay_df.groupBy(col_("creator"))\
+#    .agg(max_(col_("created")))\
+#    .withColumnRenamed("max(created)", "author_last")
 
 removed_lines_by_creator = line_decay_df.filter(col_("removed").isNotNull())\
     .groupBy(col_("creator"))\
@@ -111,8 +112,7 @@ self_removed_lines_by_creator = line_decay_df.filter(col_("removed").isNotNull()
 
 
 decay_by_creator = all_lines_by_creator.join(removed_lines_by_creator, "creator", "left_outer")\
-    .join(author_start, "creator", "left_outer")\
-    .join(author_last, "creator", "left_outer") \
+    .join(author_agg, "creator", "left_outer")\
     .join(self_removed_lines_by_creator, "creator", "left_outer") \
     .join(active_lines_by_creator, "creator", "left_outer") \
     .withColumn("account_age", datediff_(current_date_(), col_("author_first")))\
@@ -122,6 +122,9 @@ decay_by_creator = all_lines_by_creator.join(removed_lines_by_creator, "creator"
     .withColumn("pct_removed_by_self", (col_("lines_removed_by_author") / col_("lines_created")))\
     .withColumn("pct_of_active_code_base", (col_("lines_active") / total_active_lines))\
     .orderBy(col_("pct_removed"))
+
+# .join(author_last, "creator", "left_outer") \
+
 
 decay_by_creator.coalesce(1).write\
 	.mode("overwrite")\
