@@ -1,9 +1,7 @@
-from datetime import date
 from datetime import datetime
 
 from pyspark.sql import SparkSession
 from pyspark.sql import SQLContext
-from pyspark.sql import DataFrameReader
 import pyspark.sql.functions as Functions
 from pyspark.sql.functions import col as col_, max as max_, min as min_, trunc as trunc_, datediff as datediff_
 from pyspark.sql.functions import current_date as current_date_, avg as avg_
@@ -70,6 +68,13 @@ line_decay_df = spark.read.csv( \
 line_decay_df = line_decay_df.withColumn("lifespan", clean_string_for_int_udf(col_("lifespan")))
 line_decay_df = line_decay_df.withColumn("created", clean_string_for_date_udf(col_("created")))
 line_decay_df = line_decay_df.withColumn("removed", clean_string_for_date_udf(col_("removed")))
+
+
+## filters
+line_decay_df = line_decay_df.filter(col_("path").like("%.java"))\
+    .filter(col_("creator") != "jorge.franco@ventura24.es")\
+    .filter(col_("creator") != "joseluis.sanchez@ventura24.es")
+
 #line_decay_df.show()
 #print line_decay_df.schema
 
