@@ -14,7 +14,8 @@ spark = SparkSession \
     .getOrCreate()
 
 # might need the sql for better analysis
-sqlContext = SQLContext(spark)
+#sparkContext = SparkContext(spark)
+#sqlContext = SQLContext(spark)
 
 data_window=7
 
@@ -47,9 +48,20 @@ def clean_string_for_date(string):
 
     return date
 
+def days_between(start, end):
+    if start is None or end is None:
+        return -1
+
+    if datetime != type(start) or datetime != type(end):
+        return -1
+
+    return (start - end).days
+
+
 
 clean_string_for_int_udf = Functions.UserDefinedFunction(clean_string_for_int, IntegerType())
 clean_string_for_date_udf = Functions.UserDefinedFunction(clean_string_for_date, DateType())
+days_between_udf = Functions.UserDefinedFunction(days_between, IntegerType())
 
 
 schema = StructType([ \
@@ -69,60 +81,57 @@ line_decay_df = spark.read.csv( \
     )
 
 
-line_decay_df = line_decay_df.withColumn("lifespan", clean_string_for_int_udf(col_("lifespan")))
-line_decay_df = line_decay_df.withColumn("created", clean_string_for_date_udf(col_("created")))
-line_decay_df = line_decay_df.withColumn("removed", clean_string_for_date_udf(col_("removed")))
+line_decay_df = line_decay_df.withColumn("lifespan", clean_string_for_int_udf(col_("lifespan"))) \
+    .withColumn("created", clean_string_for_date_udf(col_("created"))) \
+    .withColumn("removed", clean_string_for_date_udf(col_("removed"))) \
+    .withColumn("create_cohort", truncd_("week", col_("created"))) \
+    .withColumn("remove_cohort", truncd_("week", col_("removed"))) \
 
-line_cohorts_df = line_decay_df.withColumn("create_cohort", truncd_("week", col_("created")))\
-    .withColumn("remove_cohort", truncd_("week", col_("removed")))
-
-created_in_cohorts_df = line_cohorts_df.groupBy("create_cohort")\
+created_in_cohorts_df = line_decay_df.groupBy("create_cohort")\
     .count()\
     .withColumnRenamed("count", "created_in_cohort")
 
-removed_in_cohorts_df = line_cohorts_df.groupBy("create_cohort", "remove_cohort")\
+removed_in_cohorts_df = line_decay_df.groupBy("create_cohort", "remove_cohort")\
     .count()\
     .withColumnRenamed("count", "removed_in_cohort")
 
 
-removed_cohort_rows =  removed_in_cohorts_df.collect()
-for row in removed_cohort_rows:
-    removed_by_cohorts_df = removed_in_cohorts_df\
-    .filter(col_("create_cohort") == row.create_cohort)\
-    .filter(col_("remove_cohort") <= row.remove_cohort) \
-    .agg(sum_("removed_in_cohort"))
+report_df = created_in_cohorts_df.join(removed_in_cohorts_df, "create_cohort", "left_outer") \
+    .withColumn("days_in_cohort", days_between_udf(col_("remove_cohort"), col_("create_cohort"))) \
+    .withColumn("sliding_decay_pct", \
+                ((col_("created_in_cohort") - col_("removed_in_cohort")) / col_("created_in_cohort") \
+                 * 100)) \
+    .orderBy(col_("create_cohort"), col_("remove_cohort"))
 
-    print "-----------"
-    print "-----------"
-    print "-----------"
-    print "REMOVE COHORT: {0}, {1}".format(row.create_cohort, row.remove_cohort)
-    removed_by_cohorts_df.show()
-    print "-----------"
-    print "-----------"
-    print "-----------"
+raw_data = report_df.collect()
+processed_data = []
+running_decay_for_cohort = float(0)
+total_removed_in_cohort = float(0)
+
+for row in raw_data:
+    row_dict = row.asDict()
+
+    if row_dict["remove_cohort"] is None:
+        total_removed_in_cohort = float(0)
+    else:
+        total_removed_in_cohort += float(row_dict["removed_in_cohort"])
+        created_in_cohort = float(row_dict["created_in_cohort"])
+        running_decay_for_cohort = ((created_in_cohort - total_removed_in_cohort) / created_in_cohort) * 100
+        row_dict["running_decay_for_cohort"] = running_decay_for_cohort
+        row_dict["total_removed_in_cohort"] = total_removed_in_cohort
+
+        processed_data.append(row_dict)
 
 
-#join_cols = [removed_in_cohorts_df["create_cohort"], removed_in_cohorts_df["remove_cohort"]]
-#report_df = line_cohorts_df.join(created_in_cohorts_df, "create_cohort", "left_outer")\
-#    .join(removed_in_cohorts_df, ["create_cohort", "remove_cohort"], "left_outer")
 
-"""
-report_df = removed_in_cohorts_df.join(created_in_cohorts_df, "create_cohort", "left_outer")\
-    .withColumn("decay_pct",\
-                (\
-                        (col_("created_in_cohort")-col_("removed_in_cohort"))/col_("created_in_cohort")\
-                    *100))\
-    .orderBy(col_("created_in_cohort"), col_("removed_in_cohort"))
+processed_data_rdd = spark.sparkContext.parallelize(processed_data)
+processed_data_df = spark.createDataFrame(processed_data_rdd)\
+    .orderBy(col_("create_cohort"), col_("remove_cohort"))
 
-report_df.show()
-report_df.coalesce(1).write\
+processed_data_df.show()
+
+processed_data_df.coalesce(1).write\
 	.mode("overwrite")\
 	.option("header", "true")\
 	.csv("reports/decay_rate_by_line.cvs")
 
-
-#row = date_range_df.collect()[0]
-#first_create = row.first_create
-#print "FC: {0}".format(first_create)
-#print "FCPLUS: {0}".format(first_create + + timedelta(days=7))
-"""
