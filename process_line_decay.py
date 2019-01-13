@@ -57,11 +57,20 @@ def days_between(start, end):
 
     return (start - end).days
 
+def create_cohort(date, path, user):
+
+    if date is not None:
+        return date.strftime("%W_%y")
+    else:
+        return "1"
+
+
 
 
 clean_string_for_int_udf = Functions.UserDefinedFunction(clean_string_for_int, IntegerType())
 clean_string_for_date_udf = Functions.UserDefinedFunction(clean_string_for_date, DateType())
 days_between_udf = Functions.UserDefinedFunction(days_between, IntegerType())
+create_cohort_udf = Functions.UserDefinedFunction(create_cohort, StringType())
 
 
 schema = StructType([ \
@@ -84,8 +93,8 @@ line_decay_df = spark.read.csv( \
 line_decay_df = line_decay_df.withColumn("lifespan", clean_string_for_int_udf(col_("lifespan"))) \
     .withColumn("created", clean_string_for_date_udf(col_("created"))) \
     .withColumn("removed", clean_string_for_date_udf(col_("removed"))) \
-    .withColumn("create_cohort", truncd_("week", col_("created"))) \
-    .withColumn("remove_cohort", truncd_("week", col_("removed"))) \
+    .withColumn("create_cohort", create_cohort_udf(col_("created"), col_("path"), col_("creator"))) \
+    .withColumn("remove_cohort", create_cohort_udf(col_("removed"), col_("path"), col_("creator")))
 
 created_in_cohorts_df = line_decay_df.groupBy("create_cohort")\
     .count()\
