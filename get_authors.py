@@ -21,6 +21,8 @@ import os
 import traceback
 import re
 
+OUTPUT_DIR = "output"
+
 
 if len(sys.argv) > 2:
     print("Usage: <path to log file>")
@@ -35,5 +37,12 @@ cleaned_authors = {}
 for author_tuple in authors:
 	cleaned_authors[author_tuple.lower()] = True
 
-for key, value in cleaned_authors.iteritems():
-	print "{0},{0}".format(key)
+
+if not os.path.exists(os.path.dirname(OUTPUT_DIR + "/authors_mapping.csv")):
+    os.makedirs(os.path.dirname(OUTPUT_DIR + "/authors_mapping.csv"))
+
+
+with open(OUTPUT_DIR + "/authors_mapping.csv", "w") as data_file:
+    for key, value in cleaned_authors.iteritems():
+        data = "{0},{0}\n".format(key)
+        data_file.write(data)
