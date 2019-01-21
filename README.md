@@ -14,7 +14,12 @@ Not licensed yet
 
 ## Instructions
 
-### 1) Generate your author mapping table
+### 1) Generate your log file
+```
+git log --patch --reverse > test_data/data.log
+```
+
+### 2) Generate your author mapping table
 First run the author mapping script
 ```commandline
 ./get_authors.py test_data/dt.log
@@ -23,14 +28,14 @@ First run the author mapping script
 Then edit the /output/authors_mapping.csv file to have the correct mapping.
 
 
-### 2) Convert the git log to a usable data format
+### 3) Convert the git log to a usable data format
 ```commandline
 ./parse_git_log.py test_data/dt.log output/authors_mapping.cvs
 ###
 
 ```
 
-### 3) Run the PySpark Analyzers
+### 4) Run the PySpark Analyzers
 ```commandline
 /ss.sh process_line_decay.py
 ```
