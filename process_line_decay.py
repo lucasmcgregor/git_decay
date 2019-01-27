@@ -75,11 +75,15 @@ def create_cohort(date, path, user):
     else:
         return "1"
 
-def create_cohort_order_id(cohort_name):
+def create_cohort_id(date):
 
-    week, year = cohort_name.split("_")
-    week = "%02d" % int(week)
-    return int("{0}{1}".format(year, week))
+    rv = -1
+    if date is not None:
+        year = date.strftime("%y")
+        week = "%02d" % int(date.strftime("%W"))
+        rv = int("{0}{1}".format(year,week))
+
+    return rv
 
 
 
@@ -87,8 +91,8 @@ def create_cohort_order_id(cohort_name):
 clean_string_for_int_udf = Functions.UserDefinedFunction(clean_string_for_int, IntegerType())
 clean_string_for_date_udf = Functions.UserDefinedFunction(clean_string_for_date, DateType())
 days_between_udf = Functions.UserDefinedFunction(days_between, IntegerType())
-create_cohort_order_id_udf = Functions.UserDefinedFunction(create_cohort_order_id, IntegerType())
-create_cohort_udf = Functions.UserDefinedFunction(create_cohort, StringType())
+create_cohort_id_udf = Functions.UserDefinedFunction(create_cohort_id, IntegerType())
+#create_cohort_udf = Functions.UserDefinedFunction(create_cohort, StringType())
 
 
 schema = StructType([ \
@@ -111,8 +115,8 @@ line_decay_input_df = spark.read.csv( \
 line_decay_df = line_decay_input_df.withColumn("lifespan", clean_string_for_int_udf(col_("lifespan"))) \
     .withColumn("created", clean_string_for_date_udf(col_("created"))) \
     .withColumn("removed", clean_string_for_date_udf(col_("removed"))) \
-    .withColumn("create_cohort", create_cohort_udf(col_("created"), col_("path"), col_("creator"))) \
-    .withColumn("remove_cohort", create_cohort_udf(col_("removed"), col_("path"), col_("creator")))
+    .withColumn("create_cohort", create_cohort_id_udf(col_("created"))) \
+    .withColumn("remove_cohort", create_cohort_id_udf(col_("removed")))
 
 created_in_cohorts_df = line_decay_df.groupBy("create_cohort")\
     .count()\
@@ -168,7 +172,6 @@ for row in raw_data:
 
     row_dict["pct_sliding_decay"] = (float(row_dict["removed_in_this_cohort"]) / float(row_dict["total_in_cohort"]) ) * 100
     row_dict["pct_total_decay"] = (float(total_removed_by_this_cohort) / float(row_dict["total_in_cohort"])) * 100
-    row_dict["cohort_id"] = create_cohort_order_id(row_dict["create_cohort"])
 
     try:
         initial = row_dict["total_in_cohort"]
@@ -189,8 +192,7 @@ for row in raw_data:
 
 processed_data_rdd = spark.sparkContext.parallelize(processed_data)
 processed_data_df = spark.createDataFrame(processed_data_rdd)\
-    .select(col_("cohort_id"),\
-            col_("create_cohort"), \
+    .select(col_("create_cohort"), \
             col_("remove_cohort"), \
             col_("lifespan"), \
             col_("total_in_cohort"), \
