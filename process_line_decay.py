@@ -10,6 +10,9 @@ from pyspark.sql.functions import current_date as current_date_, avg as avg_, da
 from pyspark.sql.types import StructField, StructType, StringType, DateType, IntegerType
 from pyspark.sql.window import Window
 
+import math
+import sys
+
 spark = SparkSession \
     .builder \
     .appName("Git Data Line Decay Processor") \
@@ -97,21 +100,15 @@ schema = StructType([ \
     StructField("lifespan", StringType()), \
     ])
 
-line_decay_df = spark.read.csv( \
+line_decay_input_df = spark.read.csv( \
     "output/line_decay.csv", \
     header=True, \
     mode="DROPMALFORMED", \
     schema=schema \
     )
 
-"""
-cc_id, created_cohort, removed_cohort, lifespan, total_in_cohort, removed_in_this_cohort, total_removed_by_this_cohort, pct_sliding_decay, pct_total_decay 
-112017, 11_2017:/pk1, 12_2017, 30, 1000, 10, 10, 1%, 1%
-112017, 11_2017:/pk1, 14_2017, 90, 1000, 890, 900, 89%, 90%
-112017, 11_2017:/pk2, 12_2017, 90, 1000, 890, 900, 89%, 90%
-"""
 
-line_decay_df = line_decay_df.withColumn("lifespan", clean_string_for_int_udf(col_("lifespan"))) \
+line_decay_df = line_decay_input_df.withColumn("lifespan", clean_string_for_int_udf(col_("lifespan"))) \
     .withColumn("created", clean_string_for_date_udf(col_("created"))) \
     .withColumn("removed", clean_string_for_date_udf(col_("removed"))) \
     .withColumn("create_cohort", create_cohort_udf(col_("created"), col_("path"), col_("creator"))) \
@@ -140,8 +137,10 @@ cohort_df = created_in_cohorts_df.join(removed_cohorts_with_lifespan_df, "create
 
 raw_data = cohort_df.collect()
 processed_data = []
-previous_create_cohort = ""
+decay_data = []
+previous_create_cohort = None
 total_removed_by_this_cohort = 0
+decay_rate = 0
 ## data should be ordered by:
 ## creation_cohort
 ## and lifespan (0...)
@@ -151,9 +150,14 @@ for row in raw_data:
     ## if we enter a new creation cohort
     ## start counting the removals
     if row_dict["create_cohort"] != previous_create_cohort:
-        #print "NO MATCH ON {0}:{1}".format(row_dict["create_cohort"], previous_create_cohort)
+        if previous_create_cohort is not None:
+            decay_row = {"week":previous_create_cohort, "decay_rate":decay_rate}
+            decay_data.append(decay_row)
+
         previous_create_cohort = row_dict["create_cohort"]
         total_removed_by_this_cohort = 0
+
+
 
 
     total_removed_by_this_cohort = total_removed_by_this_cohort + int(row_dict["removed_in_this_cohort"])
@@ -166,7 +170,21 @@ for row in raw_data:
     row_dict["pct_total_decay"] = (float(total_removed_by_this_cohort) / float(row_dict["total_in_cohort"])) * 100
     row_dict["cohort_id"] = create_cohort_order_id(row_dict["create_cohort"])
 
+    try:
+        initial = row_dict["total_in_cohort"]
+        lost = total_removed_by_this_cohort
+        time = row_dict["lifespan"]
+        if time < 1:
+            time = 1
+        decay_rate = (math.log((float(initial) - float(lost)) / float(initial)) / float(time)) * 100000
+        #decay_rate = "{0}".format(decay_rate)
+        print "THE DECAY RATE: '{0}'".format(decay_rate)
+    except Exception as e:
+        print sys.exc_value
+        print "DECAY RATE FAILED: {0},{1},{2}".format(initial, lost, time)
+        #decay_rate = -1
 
+    row_dict["decay_rate"] = decay_rate
     processed_data.append(row_dict)
 
 processed_data_rdd = spark.sparkContext.parallelize(processed_data)
@@ -179,13 +197,27 @@ processed_data_df = spark.createDataFrame(processed_data_rdd)\
             col_("removed_in_this_cohort"), \
             col_("total_removed_by_this_cohort"), \
             col_("pct_sliding_decay"), \
-            col_("pct_total_decay")) \
+            col_("pct_total_decay"),\
+            col_("decay_rate"))\
     .orderBy(col_("create_cohort"), col_("lifespan"))
 
 
 processed_data_df.coalesce(1).write\
 	.mode("overwrite")\
 	.option("header", "true")\
+    .option("inferSchema", "true")\
 	.csv("reports/decay_rate_by_line.cvs")
+
+
+decay_data_rdd = spark.sparkContext.parallelize(decay_data)
+decay_data_df = spark.createDataFrame(decay_data_rdd)\
+    .orderBy("week")
+
+decay_data_df.coalesce(1).write\
+	.mode("overwrite")\
+	.option("header", "true")\
+    .option("inferSchema", "true")\
+	.csv("reports/decay_rate_by_week.cvs")
+
 
 
