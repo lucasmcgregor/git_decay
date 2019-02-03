@@ -5,9 +5,10 @@ from datetime import timedelta
 from pyspark.sql import SparkSession
 from pyspark.sql import SQLContext
 import pyspark.sql.functions as Functions
-from pyspark.sql.functions import col as col_, max as max_, min as min_, trunc as trunc_, datediff as datediff_
-from pyspark.sql.functions import current_date as current_date_, avg as avg_, date_trunc as truncd_, sum as sum_
-from pyspark.sql.types import StructField, StructType, StringType, DateType, IntegerType
+from pyspark.sql.functions import col as col_, max as max_, min as min_, trunc as trunc_, datediff as datediff_, count as count_
+from pyspark.sql.functions import lit as lit_
+from pyspark.sql.functions import current_date as current_date_, avg as avg_, date_trunc as truncd_, sum as sum_, lag as lag_
+from pyspark.sql.types import StructField, StructType, StringType, DateType, IntegerType, TimestampType
 from pyspark.sql.window import Window
 
 import math
@@ -68,6 +69,31 @@ def days_between(start, end):
 
     return int((start - end).days)
 
+
+
+def minutes_between(start, end):
+    """
+    if either time is none, or they are the same times; it will return a None
+    else it will return the minutes between start - end
+
+    :param start: start of the time window as a datetime
+    :param end: end of the window as a datetime
+    :return: minutes between
+    """
+
+    if start is None:
+        return None
+
+    if end is None:
+        return None
+
+    if start == end:
+        return None
+
+    td = start - end
+    return int(td.seconds / 60)
+
+
 def create_cohort(date, path, user):
 
     if date is not None:
@@ -89,9 +115,10 @@ def create_cohort_id(date):
 
 
 clean_string_for_int_udf = Functions.UserDefinedFunction(clean_string_for_int, IntegerType())
-clean_string_for_date_udf = Functions.UserDefinedFunction(clean_string_for_date, DateType())
+clean_string_for_date_udf = Functions.UserDefinedFunction(clean_string_for_date, TimestampType())
 days_between_udf = Functions.UserDefinedFunction(days_between, IntegerType())
 create_cohort_id_udf = Functions.UserDefinedFunction(create_cohort_id, IntegerType())
+minutes_between_udf = Functions.UserDefinedFunction(minutes_between, IntegerType())
 #create_cohort_udf = Functions.UserDefinedFunction(create_cohort, StringType())
 
 
@@ -116,11 +143,22 @@ line_decay_df = line_decay_input_df.withColumn("lifespan", clean_string_for_int_
     .withColumn("created", clean_string_for_date_udf(col_("created"))) \
     .withColumn("removed", clean_string_for_date_udf(col_("removed"))) \
     .withColumn("create_cohort", create_cohort_id_udf(col_("created"))) \
-    .withColumn("remove_cohort", create_cohort_id_udf(col_("removed")))
+    .withColumn("remove_cohort", create_cohort_id_udf(col_("removed"))) \
+
+
+create_window = Window.partitionBy().orderBy("created")
+line_decay_df = line_decay_df.withColumn("prev_created", lag_(line_decay_df.created).over(create_window)) \
+    .withColumn("time_between", minutes_between_udf(col_("created"), col_("prev_created")))
+
+line_decay_df.show()
+
+
 
 created_in_cohorts_df = line_decay_df.groupBy("create_cohort")\
-    .count()\
-    .withColumnRenamed("count", "total_in_cohort")
+    .agg( \
+        count_(lit_(1)).alias("total_in_cohort"),\
+        avg_(col_("time_between")).alias("avg_time_between")\
+        )
 
 removed_in_cohorts_df = line_decay_df.groupBy("create_cohort", "remove_cohort")\
     .count()\
@@ -128,7 +166,10 @@ removed_in_cohorts_df = line_decay_df.groupBy("create_cohort", "remove_cohort")\
 
 lifespand_days_in_cohort_df = line_decay_df.groupBy("create_cohort", "remove_cohort")\
     .agg(max_(col_("lifespan")))\
-    .withColumnRenamed("max(lifespan)", "lifespan")
+    .withColumnRenamed("max(lifespan)", "lifespan") \
+
+
+lifespand_days_in_cohort_df.show()
 
 removed_cohorts_with_lifespan_df = removed_in_cohorts_df.join(lifespand_days_in_cohort_df, \
                                                               (removed_in_cohorts_df.create_cohort == lifespand_days_in_cohort_df.create_cohort) & \
@@ -162,8 +203,6 @@ for row in raw_data:
         total_removed_by_this_cohort = 0
 
 
-
-
     total_removed_by_this_cohort = total_removed_by_this_cohort + int(row_dict["removed_in_this_cohort"])
 
     print "RUNNING TOTS: {0}:{1}  {2} -> {3}".format(row_dict["create_cohort"], previous_create_cohort, row_dict["removed_in_this_cohort"], total_removed_by_this_cohort)
@@ -195,6 +234,7 @@ processed_data_df = spark.createDataFrame(processed_data_rdd)\
     .select(col_("create_cohort"), \
             col_("remove_cohort"), \
             col_("lifespan"), \
+            col_("avg_time_between"), \
             col_("total_in_cohort"), \
             col_("removed_in_this_cohort"), \
             col_("total_removed_by_this_cohort"), \

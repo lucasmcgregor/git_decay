@@ -63,6 +63,13 @@ class GitRepoObj:
 		#	print "    FILE NOT FOUND FOR RENAME!!! {0}".format(old_path)
 
 
+	def modification_event(self, date):
+
+		if self.last_modified_date is None or \
+			date > self.last_modified_date:
+			self.last_modified_date = date
+
+
 class GitFileLineObj:
 
 		def __init__(self, date_added, author):

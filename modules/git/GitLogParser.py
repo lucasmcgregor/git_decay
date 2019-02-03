@@ -48,6 +48,8 @@ class GitLogParser(object):
 			git_file.check_and_extend_line_array(patch_length)
 			line_index = 0
 
+			git_repo_object.modification_event(e.date)
+
 			#print "Extending git patch for file:{0} to length:{1}".format(git_file.get_path(), patch_length)
 
 			for line in e.patched_lines:
